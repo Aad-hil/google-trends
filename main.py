@@ -1,53 +1,69 @@
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-import time
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
+from datetime import datetime
+import os
 
 # Set up Selenium options
-chrome_options = Options()
-chrome_options.add_argument("--headless")  # Run in the background
+chrome_options = webdriver.ChromeOptions()
+chrome_options.add_experimental_option("detach", True)
 
-# Set up ChromeDriver path
-chrome_service = Service('path/to/chromedriver')
+driver = webdriver.Chrome(options=chrome_options)
 
-# Keywords to monitor
-keywords = ["AI", "Python programming", "Climate change"]
+# Open Google Trends "Trending Now" page
+driver.get("https://trends.google.com/trends/trendingsearches/daily")
 
-# Start ChromeDriver session
-driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
 
-# Open Google Trends
-driver.get("https://trends.google.com/trends/")
+# Define a function to scrape "Trending Now" titles
+def scrape_trending_now():
+    try:
+        # Wait for the trending now section to load and select the trend titles
+        trending_section = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.CLASS_NAME, 'mZ3RIc'))
+        )
 
-def monitor_trends(keyword):
-    # Locate the search box and search the keyword
-    search_box = driver.find_element(By.CLASS_NAME, 'input')
-    search_box.clear()
-    search_box.send_keys(keyword)
-    search_box.send_keys(Keys.ENTER)
-    time.sleep(2)  # Wait for page load
+        # Scrape trending titles
+        trending_titles = [trend.text for trend in trending_section]
 
-    # Scrape trending data
-    trend_elements = driver.find_elements(By.CLASS_NAME, 'list-item-title')
-    trends = [trend.text for trend in trend_elements]
-    return trends
+        # Add a timestamp for when the data is collected
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        trending_data = {'Timestamp': timestamp, 'Trending Titles': trending_titles}
 
-# Loop through keywords and scrape data
-trend_data = {}
-for keyword in keywords:
-    print(f"Monitoring trends for: {keyword}")
-    trends = monitor_trends(keyword)
-    trend_data[keyword] = trends
+        return trending_data
 
-# Convert the data into a DataFrame
-trend_df = pd.DataFrame.from_dict(trend_data, orient='index').transpose()
+    except Exception as e:
+        print(f"Error scraping trending now titles: {str(e)}")
+        return None
 
-# Save the results to an Excel file
-trend_df.to_excel("trends_report.xlsx", index=False)
-print("Trends report generated successfully!")
+
+# Scrape the trending titles
+trending_data = scrape_trending_now()
+
+# Define the Excel file path
+file_path = "trending_now_titles.xlsx"
+
+# If we successfully scraped data, update the Excel file
+if trending_data:
+    # Convert the new data into a DataFrame
+    df_new = pd.DataFrame(trending_data['Trending Titles'], columns=['Trending Now Titles'])
+    df_new['Timestamp'] = trending_data['Timestamp']
+
+    # Check if the Excel file already exists
+    if os.path.exists(file_path):
+        # Load the existing Excel file
+        df_existing = pd.read_excel(file_path)
+
+        # Append new data to the existing DataFrame
+        df_updated = pd.concat([ df_new,df_existing], ignore_index=True)
+    else:
+        # If the file doesn't exist, just use the new data
+        df_updated = df_new
+
+    # Save the updated DataFrame back to the same Excel file
+    df_updated.to_excel(file_path, index=False)
+    print("Trending Now titles report updated successfully!")
 
 # Close the browser
 driver.quit()
